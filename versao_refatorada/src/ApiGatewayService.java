@@ -1,6 +1,9 @@
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import utils.BulkheadExecutor;
+import utils.CircuitBreaker;
+import utils.HttpClient;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -126,7 +129,13 @@ public class ApiGatewayService {
                 byte[] requestBody = exchange.getRequestBody().readAllBytes();
 
                 Callable<HttpClient.Response> work = () -> circuitBreaker.call(() ->
-                        httpClient.forward(method, targetUrl, requestBody, exchange.getRequestHeaders())
+                        {
+                            try {
+                                return httpClient.forward(method, targetUrl, requestBody, exchange.getRequestHeaders());
+                            } catch (Exception e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
                 );
 
                 HttpClient.Response upstreamResp = bulkhead.submit(work);
