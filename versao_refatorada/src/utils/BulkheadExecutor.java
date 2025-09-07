@@ -10,7 +10,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class BulkheadExecutor {
 
     public static class BulkheadFullException extends RuntimeException {
-        public BulkheadFullException(String msg) { super(msg); }
+        public BulkheadFullException(String msg) {
+            super(msg);
+        }
     }
 
     private final ThreadPoolExecutor executor;
@@ -37,7 +39,6 @@ public class BulkheadExecutor {
     }
 
     public <T> T submit(Callable<T> task) throws Exception {
-        // Tenta enfileirar com timeout manual usando FutureTask e offer
         FutureTask<T> f = new FutureTask<>(task);
         boolean offered = executor.getQueue().offer(f, acquireTimeoutMs, TimeUnit.MILLISECONDS);
         if (!offered) {
@@ -45,7 +46,7 @@ public class BulkheadExecutor {
         }
         executor.execute(f);
         try {
-            return f.get(); // sem timeout aqui; timeout deve ser controlado no cliente upstream
+            return f.get();
         } catch (ExecutionException ee) {
             Throwable cause = ee.getCause();
             if (cause instanceof Exception) throw (Exception) cause;
@@ -58,8 +59,13 @@ public class BulkheadExecutor {
     static class NamedThreadFactory implements ThreadFactory {
         private final String base;
         private final AtomicInteger seq = new AtomicInteger(1);
-        NamedThreadFactory(String base) { this.base = base; }
-        @Override public Thread newThread(Runnable r) {
+
+        NamedThreadFactory(String base) {
+            this.base = base;
+        }
+
+        @Override
+        public Thread newThread(Runnable r) {
             Thread t = new Thread(r, base + "-" + seq.getAndIncrement());
             t.setDaemon(true);
             return t;

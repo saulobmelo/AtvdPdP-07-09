@@ -11,6 +11,7 @@ import java.util.Map;
 public class UsuarioService2 {
 
     private static final Map<Integer, String> USUARIOS = new HashMap<>();
+
     static {
         USUARIOS.put(1, "João");
         USUARIOS.put(2, "Maria");
@@ -30,6 +31,10 @@ public class UsuarioService2 {
                     String body = (nome == null)
                             ? "{\"erro\":\"Usuário não encontrado\"}"
                             : "{\"id\":" + id + ",\"nome\":\"" + nome + "\"}";
+
+                    System.out.println("[UsuarioService] GET " + path);
+                    System.out.println("[UsuarioService] Resposta: " + body);
+
                     respondJson(exchange, 200, body);
                 } else {
                     respondJson(exchange, 404, "{\"erro\":\"Rota não encontrada\"}");
@@ -47,6 +52,8 @@ public class UsuarioService2 {
         byte[] data = json.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
         exchange.sendResponseHeaders(status, data.length);
-        try (OutputStream os = exchange.getResponseBody()) { os.write(data); }
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(data);
+        }
     }
 }

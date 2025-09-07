@@ -21,10 +21,17 @@ public class PagamentoService2 {
                 String path = exchange.getRequestURI().getPath(); // /pagamento/101
                 String[] parts = path.split("/");
 
-                if (parts.length == 3 && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                if (parts.length == 3 &&
+                        ("POST".equalsIgnoreCase(exchange.getRequestMethod()) ||
+                                "GET".equalsIgnoreCase(exchange.getRequestMethod()))) {
+
                     int pedidoId = Integer.parseInt(parts[2]);
                     PAGAMENTOS.put(pedidoId, "pago");
                     String json = "{\"pedidoId\":" + pedidoId + ",\"status\":\"pago\"}";
+
+                    System.out.println("[PagamentoService] POST " + path);
+                    System.out.println("[PagamentoService] Resposta: " + json);
+
                     respondJson(exchange, 200, json);
                 } else {
                     respondJson(exchange, 404, "{\"erro\":\"Rota não encontrada\"}");
@@ -42,6 +49,8 @@ public class PagamentoService2 {
         byte[] data = json.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
         exchange.sendResponseHeaders(status, data.length);
-        try (OutputStream os = exchange.getResponseBody()) { os.write(data); }
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(data);
+        }
     }
 }

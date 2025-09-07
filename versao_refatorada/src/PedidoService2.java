@@ -10,6 +10,7 @@ import java.util.*;
 public class PedidoService2 {
 
     private static final Map<Integer, List<Map<String, Object>>> PEDIDOS = new HashMap<>();
+
     static {
         PEDIDOS.put(1, List.of(
                 Map.of("id", 101, "descricao", "Livro Java", "valor", 50)
@@ -23,7 +24,7 @@ public class PedidoService2 {
         HttpServer server = HttpServer.create(new InetSocketAddress(8001), 0);
 
         // GET /pedido/usuario/{userId}
-        // POST /pedido/{pedidoId}/pagar  -> (apenas retorna um payload informativo; quem chama o Pagamento agora é o Gateway)
+        // POST /pedido/{pedidoId}/pagar
         server.createContext("/pedido", exchange -> {
             try {
                 String path = exchange.getRequestURI().getPath();
@@ -33,11 +34,19 @@ public class PedidoService2 {
                     int userId = Integer.parseInt(parts[3]);
                     List<Map<String, Object>> lista = PEDIDOS.getOrDefault(userId, List.of());
                     String json = toJsonArray(lista);
+
+                    System.out.println("[PedidoService] GET " + path);
+                    System.out.println("[PedidoService] Resposta: " + json);
+
                     respondJson(exchange, 200, json);
 
                 } else if (parts.length == 3 && "POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                     int pedidoId = Integer.parseInt(parts[2]);
                     String json = "{\"pedidoId\":" + pedidoId + ",\"acao\":\"pagar\",\"status\":\"solicitado\"}";
+
+                    System.out.println("[PedidoService] POST " + path);
+                    System.out.println("[PedidoService] Resposta: " + json);
+
                     respondJson(exchange, 200, json);
 
                 } else {
@@ -56,7 +65,9 @@ public class PedidoService2 {
         byte[] data = json.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
         exchange.sendResponseHeaders(status, data.length);
-        try (OutputStream os = exchange.getResponseBody()) { os.write(data); }
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(data);
+        }
     }
 
     private static String toJsonArray(List<Map<String, Object>> lista) {

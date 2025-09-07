@@ -14,7 +14,6 @@ import java.util.concurrent.Callable;
 
 public class ApiGatewayService {
 
-    // ======= Dependências (IoC via construtor) =======
     private final HttpClient httpClient;
     private final CircuitBreaker usuarioCB;
     private final CircuitBreaker pedidoCB;
@@ -43,18 +42,15 @@ public class ApiGatewayService {
     }
 
     public static void main(String[] args) throws Exception {
-        // Configs padrões (pode ajustar se quiser)
-        HttpClient http = new HttpClient(2000, 2000); // timeouts (ms)
+        HttpClient http = new HttpClient(2000, 2000);
 
-        // Circuit Breakers: 3 falhas seguidas abre, tenta meia-vida após 5s
         CircuitBreaker usuarioCB = new CircuitBreaker(3, 5000);
         CircuitBreaker pedidoCB = new CircuitBreaker(3, 5000);
         CircuitBreaker pagamentoCB = new CircuitBreaker(3, 5000);
 
-        // Bulkheads: 5 threads, fila 20, timeout 3s pra adquirir
         BulkheadExecutor usuarioBH = new BulkheadExecutor("usuarioBH", 5, 20, 3000);
-        BulkheadExecutor pedidoBH  = new BulkheadExecutor("pedidoBH",  5, 20, 3000);
-        BulkheadExecutor pagtoBH   = new BulkheadExecutor("pagtoBH",   5, 20, 3000);
+        BulkheadExecutor pedidoBH = new BulkheadExecutor("pedidoBH", 5, 20, 3000);
+        BulkheadExecutor pagtoBH = new BulkheadExecutor("pagtoBH", 5, 20, 3000);
 
         ApiGatewayService gateway = new ApiGatewayService(http, usuarioCB, pedidoCB, pagamentoCB, usuarioBH, pedidoBH, pagtoBH);
         gateway.start(9000);
@@ -63,32 +59,11 @@ public class ApiGatewayService {
     public void start(int port) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
 
-        // Rota de saúde
         server.createContext("/api/health", exchange -> respondText(exchange, 200, "OK"));
 
-        // /api/usuario/** -> http://localhost:8000/usuario/**
-        server.createContext("/api/usuario", new ProxyHandler(
-                "http://localhost:8000",
-                usuarioCB,
-                usuarioBulkhead,
-                httpClient
-        ));
-
-        // /api/pedido/** -> http://localhost:8001/pedido/**
-        server.createContext("/api/pedido", new ProxyHandler(
-                "http://localhost:8001",
-                pedidoCB,
-                pedidoBulkhead,
-                httpClient
-        ));
-
-        // /api/pagamento/** -> http://localhost:8002/pagamento/**
-        server.createContext("/api/pagamento", new ProxyHandler(
-                "http://localhost:8002",
-                pagamentoCB,
-                pagamentoBulkhead,
-                httpClient
-        ));
+        server.createContext("/api/usuario", new ProxyHandler("http://localhost:8000", usuarioCB, usuarioBulkhead, httpClient));
+        server.createContext("/api/pedido", new ProxyHandler("http://localhost:8001", pedidoCB, pedidoBulkhead, httpClient));
+        server.createContext("/api/pagamento", new ProxyHandler("http://localhost:8002", pagamentoCB, pagamentoBulkhead, httpClient));
 
         System.out.println("API Gateway rodando na porta " + port);
         server.start();
@@ -98,12 +73,13 @@ public class ApiGatewayService {
         byte[] data = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "text/plain; charset=utf-8");
         exchange.sendResponseHeaders(status, data.length);
-        try (OutputStream os = exchange.getResponseBody()) { os.write(data); }
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(data);
+        }
     }
 
-    // ========== ProxyHandler ==========
     static class ProxyHandler implements HttpHandler {
-        private final String upstreamBase; // ex: http://localhost:8000
+        private final String upstreamBase;
         private final CircuitBreaker circuitBreaker;
         private final BulkheadExecutor bulkhead;
         private final HttpClient httpClient;
@@ -119,8 +95,7 @@ public class ApiGatewayService {
         public void handle(HttpExchange exchange) throws IOException {
             try {
                 URI uri = exchange.getRequestURI();
-                String originalPath = uri.getPath(); // ex: /api/usuario/1
-                // remove o prefixo /api -> /usuario/1
+                String originalPath = uri.getPath();
                 String proxiedPath = originalPath.replaceFirst("^/api", "");
 
                 String targetUrl = upstreamBase + proxiedPath + (uri.getQuery() != null ? "?" + uri.getQuery() : "");
@@ -128,38 +103,46 @@ public class ApiGatewayService {
                 String method = exchange.getRequestMethod().toUpperCase();
                 byte[] requestBody = exchange.getRequestBody().readAllBytes();
 
-                Callable<HttpClient.Response> work = () -> circuitBreaker.call(() ->
-                        {
-                            try {
-                                return httpClient.forward(method, targetUrl, requestBody, exchange.getRequestHeaders());
-                            } catch (Exception e) {
-                                throw new RuntimeException(e);
-                            }
-                        }
-                );
+                Callable<HttpClient.Response> work = () -> circuitBreaker.call(() -> {
+                    try {
+                        return httpClient.forward(method, targetUrl, requestBody, exchange.getRequestHeaders());
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                });
 
                 HttpClient.Response upstreamResp = bulkhead.submit(work);
 
-                // Repasse status, headers e corpo
+                System.out.println("[Gateway] " + method + " " + targetUrl);
+                System.out.println("[Gateway] Resposta status " + upstreamResp.status + ": " + new String(upstreamResp.body));
+
                 exchange.getResponseHeaders().putAll(upstreamResp.headers);
                 exchange.sendResponseHeaders(upstreamResp.status, upstreamResp.body.length);
-                try (OutputStream os = exchange.getResponseBody()) { os.write(upstreamResp.body); }
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(upstreamResp.body);
+                }
 
             } catch (CircuitBreaker.OpenCircuitException oce) {
                 String msg = "{\"erro\":\"Circuit Breaker aberto para este serviço\"}";
                 exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
                 exchange.sendResponseHeaders(503, msg.getBytes(StandardCharsets.UTF_8).length);
-                try (OutputStream os = exchange.getResponseBody()) { os.write(msg.getBytes(StandardCharsets.UTF_8)); }
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(msg.getBytes(StandardCharsets.UTF_8));
+                }
             } catch (BulkheadExecutor.BulkheadFullException bfe) {
                 String msg = "{\"erro\":\"Bulkhead saturado (limite de concorrência/fila atingido)\"}";
                 exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
                 exchange.sendResponseHeaders(429, msg.getBytes(StandardCharsets.UTF_8).length);
-                try (OutputStream os = exchange.getResponseBody()) { os.write(msg.getBytes(StandardCharsets.UTF_8)); }
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(msg.getBytes(StandardCharsets.UTF_8));
+                }
             } catch (Exception e) {
                 String msg = "{\"erro\":\"Falha no gateway: " + e.getClass().getSimpleName() + "\"}";
                 exchange.getResponseHeaders().add("Content-Type", "application/json; charset=utf-8");
                 exchange.sendResponseHeaders(502, msg.getBytes(StandardCharsets.UTF_8).length);
-                try (OutputStream os = exchange.getResponseBody()) { os.write(msg.getBytes(StandardCharsets.UTF_8)); }
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(msg.getBytes(StandardCharsets.UTF_8));
+                }
             }
         }
     }

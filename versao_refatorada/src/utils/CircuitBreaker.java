@@ -12,10 +12,12 @@ import java.util.function.Supplier;
 public class CircuitBreaker {
 
     public static class OpenCircuitException extends RuntimeException {
-        public OpenCircuitException(String msg) { super(msg); }
+        public OpenCircuitException(String msg) {
+            super(msg);
+        }
     }
 
-    private enum State { CLOSED, OPEN, HALF_OPEN }
+    private enum State {CLOSED, OPEN, HALF_OPEN}
 
     private final int failureThreshold;
     private final long openTimeoutMs;
@@ -37,7 +39,7 @@ public class CircuitBreaker {
             case OPEN:
                 if (now - openSince >= openTimeoutMs) {
                     state = State.HALF_OPEN;
-                    halfOpenTrialInProgress = false; // libera 1 tentativa
+                    halfOpenTrialInProgress = false;
                 } else {
                     throw new OpenCircuitException("Circuito aberto");
                 }
@@ -45,19 +47,16 @@ public class CircuitBreaker {
 
             case HALF_OPEN:
                 if (halfOpenTrialInProgress) {
-                    // outra chamada simultânea tentou durante HALF_OPEN
                     throw new OpenCircuitException("Teste HALF_OPEN em progresso");
                 }
                 halfOpenTrialInProgress = true;
                 try {
                     T res = supplier.get();
-                    // sucesso -> fecha circuito
                     state = State.CLOSED;
                     consecutiveFailures.set(0);
                     halfOpenTrialInProgress = false;
                     return res;
                 } catch (RuntimeException re) {
-                    // volta a abrir
                     state = State.OPEN;
                     openSince = System.currentTimeMillis();
                     halfOpenTrialInProgress = false;
@@ -93,7 +92,11 @@ public class CircuitBreaker {
         }
     }
 
-    // Métodos utilitários para testes/observabilidade
-    public synchronized String state() { return state.name(); }
-    public synchronized int failures() { return consecutiveFailures.get(); }
+    public synchronized String state() {
+        return state.name();
+    }
+
+    public synchronized int failures() {
+        return consecutiveFailures.get();
+    }
 }

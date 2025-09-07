@@ -42,12 +42,10 @@ public class HttpClient {
         conn.setReadTimeout(readTimeoutMs);
         conn.setRequestMethod(method);
 
-        // Copia alguns headers úteis (básico)
         if (inboundHeaders != null) {
             for (Map.Entry<String, List<String>> e : inboundHeaders.entrySet()) {
                 String name = e.getKey();
                 if (name == null) continue;
-                // evita headers hop-by-hop
                 if (name.equalsIgnoreCase("Host") ||
                         name.equalsIgnoreCase("Content-Length") ||
                         name.equalsIgnoreCase("Connection") ||
@@ -69,14 +67,12 @@ public class HttpClient {
         InputStream is = (status >= 200 && status < 400) ? conn.getInputStream() : conn.getErrorStream();
         byte[] resp = readAllBytesSafe(is);
 
-        // Coleta headers de resposta
         Map<String, List<String>> outHeaders = new HashMap<>();
         for (Map.Entry<String, List<String>> e : conn.getHeaderFields().entrySet()) {
             String key = e.getKey();
-            if (key == null) continue; // status-line
+            if (key == null) continue;
             outHeaders.put(key, new ArrayList<>(e.getValue()));
         }
-        // Garante Content-Type se vier vazio
         outHeaders.putIfAbsent("Content-Type", List.of("application/json; charset=utf-8"));
 
         return new Response(status, resp, outHeaders);
